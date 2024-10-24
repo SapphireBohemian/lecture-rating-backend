@@ -6,6 +6,8 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'your_jwt_secret_key'; // Replace with a secure secret key
@@ -16,6 +18,9 @@ const mongoURI = 'mongodb+srv://Sapphire:test123@cluster0.9qkusoa.mongodb.net/';
 mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(() => console.log('MongoDB connected'))
   .catch(err => console.log('MongoDB connection error:', err));
+
+// Use feedback routes
+//app.use('/feedback', feedbackRoutes);
 
 // Middleware
 app.use(cors());
@@ -104,25 +109,22 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-
     const user = await User.findOne({ username });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid username or password' });
-    }
+    if (!user) return res.status(400).json({ message: 'Invalid username or password' });
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(400).json({ message: 'Invalid username or password' });
-    }
+    if (!isPasswordValid) return res.status(400).json({ message: 'Invalid username or password' });
 
     // Generate JWT token
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
 
-    res.json({ token });
+    // Include the user role in the response
+    res.json({ token, role: user.role });
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
 
 // Middleware to authenticate JWT token
 function authenticateToken(req, res, next) {
