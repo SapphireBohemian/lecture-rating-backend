@@ -30,7 +30,8 @@ app.use(bodyParser.json());
 const feedbackSchema = new mongoose.Schema({
   lecturerName: { type: String, required: true },
   feedback: { type: String, required: true },
-  course: { type: String, required: true } // Course/module code field
+  course: { type: String, required: true },
+  rating: { type: Number, required: true, min: 1, max: 5 } // Course/module code field
 }, {
   timestamps: true
 });
@@ -41,10 +42,10 @@ const Feedback = mongoose.model('Feedback', feedbackSchema);
 // Route to submit feedback
 app.post('/feedback', async (req, res) => {
   try {
-    const { lecturerName, course, feedback } = req.body;
-    const newFeedback = new Feedback({ lecturerName, course, feedback });
+    const { lecturerName, course, feedback, rating } = req.body;
+    const newFeedback = new Feedback({ lecturerName, course, feedback, rating });
     await newFeedback.save();
-    console.log('Feedback received:', lecturerName, course, feedback);
+    console.log('Feedback received:', lecturerName, course, feedback, rating);
     res.status(201).json({ message: 'Feedback submitted successfully!' });
   } catch (error) {
     console.error('Error saving feedback:', error);
@@ -65,6 +66,17 @@ app.get('/feedback', async (req, res) => {
     res.json(feedbackList);
   } catch (error) {
     console.error('Error retrieving feedback:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+// Route to delete feedback by ID
+app.delete('/feedback/:id', async (req, res) => {
+  try {
+    await Feedback.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Feedback deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting feedback:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
@@ -145,6 +157,39 @@ app.get('/admin', authenticateToken, (req, res) => {
   }
   res.json({ message: 'Welcome Admin!' });
 });
+
+// Retrieve all users (use this for fetching students or lecturers)
+app.get('/users', async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: 'Error retrieving users' });
+  }
+});
+
+// Add a new user (used for adding students or lecturers)
+app.post('/users', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    const newUser = new User({ username, password, role });
+    await newUser.save();
+    res.status(201).json({ message: 'User added successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error adding user' });
+  }
+});
+
+// Delete a user by ID
+app.delete('/users/:id', async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting user' });
+  }
+});
+
 
 // Start the server
 app.listen(PORT, () => {

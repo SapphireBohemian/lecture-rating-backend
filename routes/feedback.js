@@ -5,12 +5,13 @@ const Feedback = require('../models/feedback'); // Import the Feedback model
 
 // Submit new feedback
 router.post('/', (req, res) => {
-    const { lecturerName, feedback, course } = req.body; // Include course
+    const { lecturerName, feedback, course, rating } = req.body; // Include course
 
     const newFeedback = new Feedback({
         lecturerName,
         feedback,
-        course // Save course/moduleCode
+        course,
+        rating // Save course/moduleCode
     });
 
     newFeedback.save()
@@ -34,9 +35,9 @@ router.get('/', (req, res) => {
 // Update feedback by ID
 router.put('/:id', (req, res) => {
     const { id } = req.params;
-    const { lecturerName, feedback, course } = req.body;
+    const { lecturerName, feedback, course, rating } = req.body;
 
-    Feedback.findByIdAndUpdate(id, { lecturerName, feedback, course }, { new: true })
+    Feedback.findByIdAndUpdate(id, { lecturerName, feedback, course, rating }, { new: true })
         .then(updatedFeedback => res.json(updatedFeedback))
         .catch(error => res.status(500).json({ error: 'Failed to update feedback' }));
 });
