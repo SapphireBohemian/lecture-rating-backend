@@ -5,9 +5,6 @@ const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-
-
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'your_jwt_secret_key'; // Replace with a secure secret key
@@ -31,7 +28,7 @@ const feedbackSchema = new mongoose.Schema({
   lecturerName: { type: String, required: true },
   feedback: { type: String, required: true },
   course: { type: String, required: true },
-  rating: { type: Number, required: true, min: 1, max: 5 } // Course/module code field
+  rating: { type: Number, required: true, min: 1, max: 10 } // Course/module code field
 }, {
   timestamps: true
 });
@@ -70,6 +67,66 @@ app.get('/feedback', async (req, res) => {
   }
 });
 
+// Route to get average ratings for each lecturer
+app.get('/feedback/average-ratings', async (req, res) => {
+  try {
+    const ratings = await Feedback.aggregate([
+      {
+        $group: {
+          _id: "$lecturerName",
+          averageRating: { $avg: "$rating" },
+        },
+      },
+      {
+        $sort: { averageRating: -1 }, // Sort by highest rating
+      },
+    ]);
+    res.json(ratings);
+  } catch (error) {
+    console.error('Error retrieving average ratings:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+// Route to calculate average ratings for each lecturer
+app.get('/analytics/average-ratings', async (req, res) => {
+  try {
+    const averageRatings = await Feedback.aggregate([
+      {
+        $group: {
+          _id: "$lecturerName",
+          averageRating: { $avg: "$rating" }
+        }
+      },
+      { $sort: { averageRating: -1 } }
+    ]);
+    res.json(averageRatings);
+  } catch (error) {
+    console.error('Error calculating average ratings:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+// Route to calculate rating trends over time for each lecturer
+app.get('/analytics/rating-trends', async (req, res) => {
+  try {
+    const trends = await Feedback.aggregate([
+      {
+        $group: {
+          _id: { lecturerName: "$lecturerName", date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } } },
+          averageRating: { $avg: "$rating" }
+        }
+      },
+      { $sort: { "_id.date": 1 } }
+    ]);
+    res.json(trends);
+  } catch (error) {
+    console.error('Error calculating rating trends:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+
 // Route to delete feedback by ID
 app.delete('/feedback/:id', async (req, res) => {
   try {
@@ -81,11 +138,12 @@ app.delete('/feedback/:id', async (req, res) => {
   }
 });
 
-// Define User schema
+// Define User schema with isApproved field
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['student', 'lecturer', 'admin'], required: true } // User role
+  role: { type: String, enum: ['student', 'lecturer', 'admin'], required: true },
+  isApproved: { type: Boolean, default: false } // New field for approval status
 });
 
 // Password hashing before saving the user
@@ -108,14 +166,19 @@ app.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    const newUser = new User({ username, password, role });
+    // Automatically approve admin users
+    const isApproved = role === 'admin' ? true : false;
+
+    const newUser = new User({ username, password, role, isApproved });
     await newUser.save();
 
-    res.status(201).json({ message: 'User registered successfully' });
+    const approvalMessage = isApproved ? 'User registered successfully and approved' : 'User registered successfully, awaiting approval';
+    res.status(201).json({ message: approvalMessage });
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
 
 // Login Route
 app.post('/login', async (req, res) => {
@@ -126,12 +189,22 @@ app.post('/login', async (req, res) => {
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) return res.status(400).json({ message: 'Invalid username or password' });
+    if (!user.isApproved) return res.status(403).json({ message: 'Account not approved by admin' });
 
     // Generate JWT token
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
-
-    // Include the user role in the response
     res.json({ token, role: user.role });
+  } catch (error) {
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+// Admin approval route for users
+app.put('/approve-user/:id', async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(req.params.id, { isApproved: true }, { new: true });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: 'User approved successfully', user });
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' });
   }
@@ -158,15 +231,18 @@ app.get('/admin', authenticateToken, (req, res) => {
   res.json({ message: 'Welcome Admin!' });
 });
 
-// Retrieve all users (use this for fetching students or lecturers)
+// Retrieve users by role (e.g., students or lecturers)
 app.get('/users', async (req, res) => {
   try {
-    const users = await User.find();
+    const { role } = req.query; // Get role from query
+    const query = role ? { role } : {}; // Filter by role if provided
+    const users = await User.find(query); // Fetch users with or without role filter
     res.json(users);
   } catch (error) {
     res.status(500).json({ message: 'Error retrieving users' });
   }
 });
+
 
 // Add a new user (used for adding students or lecturers)
 app.post('/users', async (req, res) => {
