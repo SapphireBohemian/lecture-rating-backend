@@ -193,11 +193,12 @@ app.post('/login', async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign({ userId: user._id, role: user.role }, JWT_SECRET, { expiresIn: '1h' });
-    res.json({ token, role: user.role });
+    res.json({ token, role: user.role, username: user.username });
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
 
 // Admin approval route for users
 app.put('/approve-user/:id', async (req, res) => {
