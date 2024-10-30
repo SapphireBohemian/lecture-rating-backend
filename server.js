@@ -22,25 +22,38 @@ mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+// Import routes and middleware
+//const feedbackRoutes = require('./routes/feedback');
+const { authenticateToken } = require('./middleware/auth');
 
 // Define a Feedback schema
+// In models/feedback.js or wherever your Feedback schema is defined
+
 const feedbackSchema = new mongoose.Schema({
   lecturerName: { type: String, required: true },
   feedback: { type: String, required: true },
   course: { type: String, required: true },
-  rating: { type: Number, required: true, min: 1, max: 10 } // Course/module code field
+  rating: { type: Number, required: true, min: 1, max: 10 },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Add this line
 }, {
   timestamps: true
 });
+
 
 // Create a Feedback model
 const Feedback = mongoose.model('Feedback', feedbackSchema);
 
 // Route to submit feedback
-app.post('/feedback', async (req, res) => {
+app.post('/feedback', authenticateToken, async (req, res) => {
   try {
     const { lecturerName, course, feedback, rating } = req.body;
-    const newFeedback = new Feedback({ lecturerName, course, feedback, rating });
+    const newFeedback = new Feedback({
+      lecturerName,
+      course,
+      feedback,
+      rating,
+      userId: req.user.userId // Save the ID of the user submitting the feedback
+    });
     await newFeedback.save();
     console.log('Feedback received:', lecturerName, course, feedback, rating);
     res.status(201).json({ message: 'Feedback submitted successfully!' });
@@ -50,22 +63,23 @@ app.post('/feedback', async (req, res) => {
   }
 });
 
-// Route to get all feedback or filtered feedback
-app.get('/feedback', async (req, res) => {
+// Get all feedback or filtered feedback
+app.get('/feedback', authenticateToken, async (req, res) => {
+  const { lecturerName, course } = req.query;
+
+  let query = { userId: req.user.userId }; // Only retrieve feedback for the logged-in user
+  if (lecturerName) query.lecturerName = lecturerName;
+  if (course) query.course = course;
+
   try {
-    const { lecturerName, course } = req.query;
-
-    const query = {};
-    if (lecturerName) query.lecturerName = lecturerName;
-    if (course) query.course = course;
-
-    const feedbackList = await Feedback.find(query);
-    res.json(feedbackList);
+    const feedbacks = await Feedback.find(query);
+    res.json(feedbacks);
   } catch (error) {
     console.error('Error retrieving feedback:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
 
 // Route to get average ratings for each lecturer
 app.get('/feedback/average-ratings', async (req, res) => {
@@ -212,7 +226,7 @@ app.put('/approve-user/:id', async (req, res) => {
 });
 
 
-// Middleware to authenticate JWT token
+/*// Middleware to authenticate JWT token
 function authenticateToken(req, res, next) {
   const token = req.headers['authorization'];
   if (!token) return res.status(401).json({ message: 'Access Denied' });
@@ -222,7 +236,7 @@ function authenticateToken(req, res, next) {
     req.user = user;
     next();
   });
-}
+}*/
 
 // Protected Route Example (Admin only)
 app.get('/admin', authenticateToken, (req, res) => {
