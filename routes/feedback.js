@@ -5,40 +5,60 @@ const Feedback = require('../models/feedback'); // Import the Feedback model
 const { authenticateToken } = require('../middleware/auth'); // Make sure to import the authentication middleware
 
 // Submit new feedback
-router.post('/', authenticateToken, async (req, res) => { // Ensure the user is authenticated
+router.post('/', authenticateToken, async (req, res) => {
     const { lecturerName, feedback, course, rating } = req.body;
+    
     try {
-        const newFeedback = new Feedback({
-            lecturerName,
-            feedback,
-            course,
-            rating,
-            userId: req.user.userId // Save the ID of the user submitting the feedback
-        });
-        const result = await newFeedback.save();
-        res.status(201).json(result);
+      // Find lecturer by name
+      const lecturer = await User.findOne({ username: lecturerName, role: 'lecturer' });
+      if (!lecturer) {
+        return res.status(404).json({ message: 'Lecturer not found' });
+      }
+  
+      // Create new feedback
+      const newFeedback = new Feedback({
+        lecturerId: lecturer._id,
+        lecturerName,
+        feedback,
+        course,
+        rating,
+        userId: req.user.userId,
+      });
+  
+      const result = await newFeedback.save();
+      res.status(201).json(result);
     } catch (error) {
-        console.error('Error submitting feedback:', error);
-        res.status(500).json({ error: 'Failed to submit feedback' });
+      console.error('Error submitting feedback:', error);
+      res.status(500).json({ error: 'Failed to submit feedback' });
     }
-});
+  });
+  
 
 // Get all feedback or filtered feedback
-router.get('/', authenticateToken, async (req, res) => { // Ensure the user is authenticated
-    const { lecturerName, course } = req.query; // Retrieve filter options from query params
-
-    let query = { userId: req.user.userId }; // Only retrieve feedback for the logged-in user
-    if (lecturerName) query.lecturerName = lecturerName;
-    if (course) query.course = course;
-
-    try {
-        const feedbacks = await Feedback.find(query);
-        res.json(feedbacks);
-    } catch (error) {
-        console.error('Error retrieving feedback:', error);
-        res.status(500).json({ error: 'Failed to retrieve feedback' });
+router.get('/', authenticateToken, async (req, res) => {
+    const { lecturerId, course } = req.query;
+  
+    // Define base query
+    let query = {};
+    if (req.user.role === 'lecturer') {
+      query.lecturerId = req.user.userId; // Filter by logged-in lecturer's ID
+    } else if (req.user.role === 'student') {
+      query.userId = req.user.userId; // Only show feedback submitted by the student
     }
-});
+  
+    if (course) query.course = course;
+  
+    try {
+      const feedbacks = await Feedback.find(query).populate('lecturerId', 'username');
+      res.json(feedbacks);
+    } catch (error) {
+      console.error('Error retrieving feedback:', error);
+      res.status(500).json({ error: 'Failed to retrieve feedback' });
+    }
+  });
+  
+
+
 
 // Get average ratings for the top 2 lecturers only
 router.get('/average-ratings', async (req, res) => {

@@ -30,32 +30,43 @@ const { authenticateToken } = require('./middleware/auth');
 // In models/feedback.js or wherever your Feedback schema is defined
 
 const feedbackSchema = new mongoose.Schema({
-  lecturerName: { type: String, required: true },
+  lecturerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // References lecturer's user ID
+  lecturerName: { type: String, required: true }, // Lecturer's name for display purposes
   feedback: { type: String, required: true },
   course: { type: String, required: true },
   rating: { type: Number, required: true, min: 1, max: 10 },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Add this line
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Student ID
 }, {
   timestamps: true
 });
 
 
+
+
 // Create a Feedback model
 const Feedback = mongoose.model('Feedback', feedbackSchema);
 
-// Route to submit feedback
+// Submit feedback with lecturer association
 app.post('/feedback', authenticateToken, async (req, res) => {
   try {
     const { lecturerName, course, feedback, rating } = req.body;
+
+    // Find the lecturer's user ID based on the provided lecturer name
+    const lecturer = await User.findOne({ username: lecturerName, role: 'lecturer' });
+    if (!lecturer) {
+      return res.status(404).json({ message: 'Lecturer not found' });
+    }
+
     const newFeedback = new Feedback({
-      lecturerName,
+      lecturerId: lecturer._id, // Use lecturer ID
+      lecturerName: lecturer.username, // Store lecturer name
       course,
       feedback,
       rating,
-      userId: req.user.userId // Save the ID of the user submitting the feedback
+      userId: req.user.userId // ID of the student submitting the feedback
     });
+
     await newFeedback.save();
-    console.log('Feedback received:', lecturerName, course, feedback, rating);
     res.status(201).json({ message: 'Feedback submitted successfully!' });
   } catch (error) {
     console.error('Error saving feedback:', error);
@@ -63,22 +74,31 @@ app.post('/feedback', authenticateToken, async (req, res) => {
   }
 });
 
-// Get all feedback or filtered feedback
-app.get('/feedback', authenticateToken, async (req, res) => {
-  const { lecturerName, course } = req.query;
 
-  let query = { userId: req.user.userId }; // Only retrieve feedback for the logged-in user
-  if (lecturerName) query.lecturerName = lecturerName;
+// Get feedback specific to the logged-in lecturer
+app.get('/feedback', authenticateToken, async (req, res) => {
+  const { course } = req.query;
+
+  // Lecturer-specific feedback retrieval
+  let query = {};
+  if (req.user.role === 'lecturer') {
+    query.lecturerId = req.user.userId; // Only show feedback for this lecturer
+  } else if (req.user.role === 'student') {
+    query.userId = req.user.userId; // Only show feedback submitted by this student
+  }
+
   if (course) query.course = course;
 
   try {
-    const feedbacks = await Feedback.find(query);
+    const feedbacks = await Feedback.find(query).populate('lecturerId', 'username'); // Populate lecturer details if needed
     res.json(feedbacks);
   } catch (error) {
     console.error('Error retrieving feedback:', error);
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
+
 
 
 // Route to get average ratings for each lecturer
