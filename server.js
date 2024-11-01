@@ -179,8 +179,12 @@ const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ['student', 'lecturer', 'admin'], required: true },
-  isApproved: { type: Boolean, default: false } // New field for approval status
+  isApproved: { type: Boolean, default: false },
+  email: { type: String, required: true, unique: true }, // New email field
+  name: { type: String, required: true },                // New name field
+  surname: { type: String, required: true },             // New surname field
 });
+
 
 // Password hashing before saving the user
 userSchema.pre('save', async function(next) {
@@ -195,17 +199,24 @@ const User = mongoose.model('User', userSchema);
 // Register Route
 app.post('/register', async (req, res) => {
   try {
-    const { username, password, role } = req.body;
+    const { username, password, role, email, name, surname } = req.body;
 
     const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Automatically approve admin users
     const isApproved = role === 'admin' ? true : false;
 
-    const newUser = new User({ username, password, role, isApproved });
+    const newUser = new User({ 
+      username, 
+      password, 
+      role, 
+      isApproved, 
+      email, 
+      name, 
+      surname 
+    });
     await newUser.save();
 
     const approvalMessage = isApproved ? 'User registered successfully and approved' : 'User registered successfully, awaiting approval';
@@ -214,6 +225,7 @@ app.post('/register', async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 });
+
 
 
 // Login Route
@@ -302,6 +314,72 @@ app.delete('/users/:id', async (req, res) => {
     res.status(500).json({ message: 'Error deleting user' });
   }
 });
+
+// Profile Update Route
+app.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    const { email, name, surname, password } = req.body;
+
+    const updates = {};
+    if (email) updates.email = email;
+    if (name) updates.name = name;
+    if (surname) updates.surname = surname;
+    if (password) updates.password = await bcrypt.hash(password, 10); // Hash password if updated
+
+    const updatedUser = await User.findByIdAndUpdate(req.user.userId, updates, { new: true });
+    if (!updatedUser) return res.status(404).json({ message: 'User not found' });
+
+    res.json({ message: 'Profile updated successfully', user: updatedUser });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+// Get User Profile Route
+app.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (error) {
+    console.error('Error retrieving profile:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+app.get('/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+});
+
+app.put('/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const updatedData = req.body;
+    if (updatedData.password) {
+      updatedData.password = await bcrypt.hash(updatedData.password, 10);
+    }
+    const user = await User.findByIdAndUpdate(req.user.userId, updatedData, { new: true });
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
+app.delete('/user/account', authenticateToken, async (req, res) => {
+  try {
+    await User.findByIdAndDelete(req.user.userId);
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting account' });
+  }
+});
+
+
 
 
 // Start the server
