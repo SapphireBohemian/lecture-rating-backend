@@ -6,7 +6,7 @@ const { authenticateToken } = require('../middleware/auth'); // Make sure to imp
 
 // Submit new feedback
 router.post('/', authenticateToken, async (req, res) => {
-    const { lecturerName, feedback, course, rating } = req.body;
+    const { lecturerName, feedback, course, rating, department } = req.body;
     
     try {
       // Find lecturer by name
@@ -22,6 +22,7 @@ router.post('/', authenticateToken, async (req, res) => {
         feedback,
         course,
         rating,
+        department,
         userId: req.user.userId,
       });
   
@@ -36,12 +37,12 @@ router.post('/', authenticateToken, async (req, res) => {
 
 // Get all feedback or filtered feedback
 router.get('/', authenticateToken, async (req, res) => {
-    const { lecturerId, course } = req.query;
+    const { lecturerName, course } = req.query;
   
     // Define base query
     let query = {};
     if (req.user.role === 'lecturer') {
-      query.lecturerId = req.user.userId; // Filter by logged-in lecturer's ID
+      query.lecturerName = req.user.userId; // Filter by logged-in lecturer's ID
     } else if (req.user.role === 'student') {
       query.userId = req.user.userId; // Only show feedback submitted by the student
     }

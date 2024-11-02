@@ -1,4 +1,6 @@
 //server.js
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -28,6 +30,8 @@ app.use(bodyParser.json());
 //const feedbackRoutes = require('./routes/feedback');
 const { authenticateToken } = require('./middleware/auth');
 
+const { sendEmail } = require('./emailService');
+
 // Define a Feedback schema
 // In models/feedback.js or wherever your Feedback schema is defined
 
@@ -37,6 +41,7 @@ const feedbackSchema = new mongoose.Schema({
   feedback: { type: String, required: true },
   course: { type: String, required: true },
   rating: { type: Number, required: true, min: 1, max: 10 },
+  department: {type: String, required: true},
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // Student ID
 }, {
   timestamps: true
@@ -50,14 +55,16 @@ const Feedback = mongoose.model('Feedback', feedbackSchema);
 
 // Submit feedback with lecturer association
 app.post('/feedback', authenticateToken, async (req, res) => {
+  console.log('Request body:', req.body); // Log the request body for debugging
   try {
-    const { lecturerName, course, feedback, rating } = req.body;
+    const { lecturerName, course, feedback, rating, department } = req.body;
 
     // Find the lecturer's user ID based on the provided lecturer name
     const lecturer = await User.findOne({ username: lecturerName, role: 'lecturer' });
-    if (!lecturer) {
-      return res.status(404).json({ message: 'Lecturer not found' });
-    }
+    // Validation check
+    if (!lecturerName || !course || !feedback || !rating || !department) {
+      return res.status(400).json({ message: 'All fields are required.' });
+  }
 
     const newFeedback = new Feedback({
       lecturerId: lecturer._id, // Use lecturer ID
@@ -65,10 +72,19 @@ app.post('/feedback', authenticateToken, async (req, res) => {
       course,
       feedback,
       rating,
+      department,
       userId: req.user.userId // ID of the student submitting the feedback
     });
 
     await newFeedback.save();
+
+    // Send email notification to the lecturer
+    const subject = 'New Feedback Received';
+    const text = `Hello ${lecturer.name},\n\nYou have received new feedback for your course: ${course}.`;
+    const html = `<p>Hello ${lecturer.name},</p><p>You have received new feedback for your course: <strong>${course}</strong>.</p>`;
+
+    await sendEmail(lecturer.email, subject, text, html);
+
     res.status(201).json({ message: 'Feedback submitted successfully!' });
   } catch (error) {
     console.error('Error saving feedback:', error);
@@ -79,7 +95,7 @@ app.post('/feedback', authenticateToken, async (req, res) => {
 
 // Get feedback specific to the logged-in lecturer
 app.get('/feedback', authenticateToken, async (req, res) => {
-  const { course } = req.query;
+  const { lecturerName, course, department } = req.query;
 
   // Lecturer-specific feedback retrieval
   let query = {};
@@ -89,7 +105,9 @@ app.get('/feedback', authenticateToken, async (req, res) => {
     query.userId = req.user.userId; // Only show feedback submitted by this student
   }
 
+  if (lecturerName) query.lecturerName = lecturerName;
   if (course) query.course = course;
+  if (department) query.department = department;
 
   try {
     const feedbacks = await Feedback.find(query).populate('lecturerId', 'username'); // Populate lecturer details if needed
@@ -219,6 +237,12 @@ app.post('/register', async (req, res) => {
     });
     await newUser.save();
 
+     const subject = 'Welcome to the Lecture Rating Application!';
+    const text = `Hi ${name},\n\nThank you for registering with us!`;
+    const html = `<p>Hi ${name},</p><p>Thank you for registering with us!</p>`;
+
+    await sendEmail(email, subject, text, html);
+
     const approvalMessage = isApproved ? 'User registered successfully and approved' : 'User registered successfully, awaiting approval';
     res.status(201).json({ message: approvalMessage });
   } catch (error) {
@@ -253,6 +277,14 @@ app.put('/approve-user/:id', async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, { isApproved: true }, { new: true });
     if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Send email notification to the user upon approval
+    const subject = 'Account Approved';
+    const text = `Hello ${user.name},\n\nYour account has been approved by the admin. You can now log in to the application.`;
+    const html = `<p>Hello ${user.name},</p><p>Your account has been approved by the admin. You can now log in to the application.</p>`;
+
+    await sendEmail(user.email, subject, text, html);
+
     res.json({ message: 'User approved successfully', user });
   } catch (error) {
     res.status(500).json({ message: 'Internal Server Error' });
@@ -329,6 +361,13 @@ app.put('/profile', authenticateToken, async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(req.user.userId, updates, { new: true });
     if (!updatedUser) return res.status(404).json({ message: 'User not found' });
 
+    // Send email notification to the user upon approval
+    const subject = 'Profile Updated';
+    const text = `Hello ${name},\n\nYour profile has been updated.`;
+    const html = `<p>Hello ${name},</p><p>Your profile has been updated.</p>`;
+
+    await sendEmail(email, subject, text, html);
+
     res.json({ message: 'Profile updated successfully', user: updatedUser });
   } catch (error) {
     console.error('Error updating profile:', error);
@@ -372,7 +411,16 @@ app.put('/user/profile', authenticateToken, async (req, res) => {
 
 app.delete('/user/account', authenticateToken, async (req, res) => {
   try {
+    const user = await User.findById(req.user.userId);
     await User.findByIdAndDelete(req.user.userId);
+
+    // Send email notification to the user upon account deletion
+    const subject = 'Account Deleted';
+    const text = `Hello ${user.name},\n\nYour account has been successfully deleted.`;
+    const html = `<p>Hello ${user.name},</p><p>Your account has been successfully deleted.</p>`;
+
+    await sendEmail(user.email, subject, text, html);
+
     res.json({ message: 'Account deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting account' });
