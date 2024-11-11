@@ -1,6 +1,7 @@
 //server.js
 require('dotenv').config();
 
+
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -10,6 +11,8 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = 'your_jwt_secret_key'; // Replace with a secure secret key
+
+
 
 // MongoDB connection
 const mongoURI = 'mongodb+srv://Sapphire:test123@cluster0.9qkusoa.mongodb.net/'; // Replace with your actual connection string
@@ -328,8 +331,8 @@ app.get('/users', async (req, res) => {
 // Add a new user (used for adding students or lecturers)
 app.post('/users', async (req, res) => {
   try {
-    const { username, password, role } = req.body;
-    const newUser = new User({ username, password, role });
+    const { name, surname, email, username, password, role } = req.body;
+    const newUser = new User({ name, surname, email, username, password, role });
     await newUser.save();
     res.status(201).json({ message: 'User added successfully' });
   } catch (error) {
@@ -432,5 +435,5 @@ app.delete('/user/account', authenticateToken, async (req, res) => {
 
 // Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on https://localhost:${PORT}`);
 });
